@@ -1,0 +1,17 @@
+name: Exposure Scout tests
+
+on: [workflow_dispatch, push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.X"
+    - name: Test with python unittest
+      run: python3 -u -m unittest discover -s exposurescout/tests -t . -v

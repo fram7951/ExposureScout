@@ -1,0 +1,21 @@
+# any virtual env
+my-venv/
+my_venv/
+env/
+venv/
+
+# python build related files
+__pycache__/
+
+# mkDocs related files
+mkdocs.yml
+site/
+
+# Exposure Scout specific files
+*.test-snap
+*.test_snap
+*.snap
+*.test-rpt
+*.test_rpt
+*.rpt
+*.db
