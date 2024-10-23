@@ -125,6 +125,19 @@ class User(ACollectible):
 
 		return (user, rest)
 
+	def export_report_db(self, report_id, run_id, status, db_cursor):
+		"""
+		Export a User data structure that is part of a diff report into the specified database.
+
+		Arguments:
+			report_id (str): identifer of the report the element is linked to.
+			run_id (str): identifier of the snapshot run the element comes from.
+			status (int): value of the element's status in the diff report (created, deleted, modified, ...).
+			db_cursor (Cursor): sqlite3 cursor that points to the database.
+		"""
+		query = f"""INSERT INTO reports_users VALUES (?, ?, ?, ?)"""
+		db_cursor.execute(query, (report_id, run_id, self.uid, status))
+
 class Group(ACollectible):
 	"""
 	Datastructure used to represent a Linux/Unix Group.
@@ -209,6 +222,19 @@ class Group(ACollectible):
 
 		return (group, rest)
 
+	def export_report_db(self, report_id, run_id, status, db_cursor):
+		"""
+		Export a Group data structure that is part of a diff report into the specified database.
+
+		Arguments:
+			report_id (str): identifer of the report the element is linked to.
+			run_id (str): identifier of the snapshot run the element comes from.
+			status (int): value of the element's status in the diff report (created, deleted, modified, ...).
+			db_cursor (Cursor): sqlite3 cursor that points to the database.
+		"""
+		query = f"""INSERT INTO reports_groups VALUES (?, ?, ?, ?)"""
+		db_cursor.execute(query, (report_id, run_id, self.gid, status))
+
 class Sudoer(ACollectible):
 	"""
 	Datastructure used to represent the sudoers.
@@ -277,6 +303,19 @@ class Sudoer(ACollectible):
 			return (sudoer, None)
 
 		return (sudoer, rest)
+
+	def export_report_db(self, report_id, run_id, status, db_cursor):
+		"""
+		Export a Sudoer data structure that is part of a diff report into the specified database.
+
+		Arguments:
+			report_id (str): identifer of the report the element is linked to.
+			run_id (str): identifier of the snapshot run the element comes from.
+			status (int): value of the element's status in the diff report (created, deleted, modified, ...).
+			db_cursor (Cursor): sqlite3 cursor that points to the database.
+		"""
+		query = f"""INSERT INTO reports_sudoers VALUES (?, ?, ?, ?)"""
+		db_cursor.execute(query, (report_id, run_id, self.uid, status))
 
 
 def parse_user_line(line):
@@ -454,54 +493,46 @@ class LinUsersCollector(ACollector):
 			return None
 		return rest
 
-	def import_db(self, db, run_id):
+	def import_db(self, db_cursor, run_id):
 		"""
 		Import method to recover data of a previous run stored in DB. Those data can then be previewed.
+		Note: must already been connected to the database.
 
 		Arguments:
-			db (str): path to the db file.
+			db_cursor (Cursor): pointer to the database.
 			run_id (str): id used to store the collected data in the db of a specific run.
 		"""
-		conn = sql.connect(db)
-		cursor = conn.cursor()
-
-		####################################################
-		##		%% TODO: Check if run_id is in db %%	  ##
-		####################################################
-
 		# search for the 2 hashes
 		query = f"""SELECT passwd_md5, group_md5 FROM user_collector WHERE run_id=?"""
-		request = cursor.execute(query, (run_id,))
+		request = db_cursor.execute(query, (run_id,))
 		hashes = request.fetchone()
 		passwd_hash, group_hash = hashes
 
 		# search for the users
 		query = f"""SELECT uid, name FROM users WHERE run_id=?"""
-		request = cursor.execute(query, (run_id,))
+		request = db_cursor.execute(query, (run_id,))
 		db_users = request.fetchall()
 		users = []
-		for db_user in db_users:
-			uid, uname = db_user
+		for uid, uname in db_users:
 			uid = int(uid)
 			query = f"""SELECT gid FROM groups_list where run_id=? AND uid=?"""
-			request = cursor.execute(query, (run_id, uid))
+			request = db_cursor.execute(query, (run_id, uid))
 			db_groups = request.fetchall()
 
 			# needed since db_groups is of the form [('%gid%',), ... , ('%gid%',)]
 			groups = []
-			for g in db_groups:
-				groups.append(int(g[0]))
+			for gid, *_ in db_groups:
+				groups.append(int(gid))
 
 			user = User(uid, uname, groups)
 			users.append(user)
 
 		# search for the groups
 		query = f"""SELECT gid, name FROM groups WHERE run_id=?"""
-		request = cursor.execute(query, (run_id,))
+		request = db_cursor.execute(query, (run_id,))
 		db_groups = request.fetchall()
 		groups = []
-		for db_group in db_groups:
-			gid, gname = db_group
+		for gid, gname in db_groups:
 			gid = int(gid)
 
 			group = Group(gid, gname)
@@ -509,20 +540,16 @@ class LinUsersCollector(ACollector):
 
 		# search for the sudoers
 		query = f"""SELECT uid FROM sudoers WHERE run_id=?"""
-		request = cursor.execute(query, (run_id,))
+		request = db_cursor.execute(query, (run_id,))
 		db_sudoers = request.fetchall()
 		sudoers = []
-		for db_sudoer in db_sudoers:
-			uid,_ = db_group
-			uid = int(gid)
+		for uid, *_ in db_sudoers:
+			uid = int(uid)
 
 			sudoers.append(Sudoer(uid))	
 
 		# store the recovered data
 		self.raw_result = [users, groups, sudoers, passwd_hash, group_hash]
-
-		# close the connection to the db
-		conn.close()
 
 	def _export_sql(self, db, run_id):
 		"""
@@ -532,6 +559,11 @@ class LinUsersCollector(ACollector):
 		cursor = conn.cursor()
 
 		# creates the tables if they do not already exist
+		cursor.execute("""CREATE TABLE IF NOT EXISTS snapshots(
+			run_id TEXT,
+			collector_type BLOB,
+			PRIMARY KEY(run_id, collector_type)
+			)""") # collector type is prefered as "collector_type" value compared to collector name because encoding is lighter with a BLOB of bytes than with a TEXT value
 		cursor.execute("""CREATE TABLE IF NOT EXISTS user_collector(
 			run_id TEXT PRIMARY KEY,
 			passwd_md5 BLOB,
@@ -565,6 +597,10 @@ class LinUsersCollector(ACollector):
 			)""")
 
 		conn.commit()
+
+		# Add the collector type in the list of collectors that were run during the snapshot
+		query = f"""INSERT INTO snapshots VALUES (?, ?)"""
+		cursor.execute(query, (run_id, self.snapshot_elemnt_id))
 
 		# Add the user collector general data
 		query = f"""INSERT INTO user_collector VALUES (?, ?, ?)"""
@@ -835,7 +871,7 @@ class LinUsersCollector(ACollector):
 
 	def import_diff_from_report(data, run_ids, report):
 		"""
-		Extract LinUsersCollector's elements from a report file.
+		Extract LinUsersCollector's diff elements from a report file.
 
 		Arguments:
 			data (bytes): a bytes stream representing the elements associated to this collector in the report.
@@ -882,6 +918,96 @@ class LinUsersCollector(ACollector):
 
 		return True
 
+	def import_diff_from_report_db(db_cursor, report_id, run_ids, report):
+		"""
+		Extract LinUsersCollector's diff elements from a database.
+
+		Arguments:
+			db_cursor (Cursor): pointer to the database.
+			report_id (str): identifier of the report being imported.
+			run_ids (list[str]): the ordered list of the snapshot ids from which come the report elements.
+			report (DiffReport): datastructure in which to store the recovered data.
+		"""
+		for run_id in run_ids:
+			# search for users linked to that report
+			query = f"""SELECT uid, status FROM reports_users WHERE report_id=? AND run_id=?"""
+			request = db_cursor.execute(query, (report_id, run_id))
+			users = request.fetchall()
+
+			if users and users != []:
+				for uid, status in users:
+					query = f"""SELECT name FROM users WHERE run_id=? AND uid=?"""
+					request = db_cursor.execute(query, (run_id, uid))
+					names = request.fetchall()
+					for uname, *_ in names:
+						uid = int(uid)
+						query = f"""SELECT gid FROM groups_list where run_id=? AND uid=?"""
+						request = db_cursor.execute(query, (run_id, uid))
+						db_groups = request.fetchall()
+
+						# needed since db_groups is of the form [('%gid%',), ... , ('%gid%',)]
+						groups = []
+						for gid, *_ in db_groups:
+							groups.append(int(gid))
+
+						user = User(uid, uname, groups)
+						
+						report.add_diff_element(DiffElement(run_id, user, User.element_name), LinUsersCollector.name)
+
+			else:
+				try:
+					report.add_no_diff_element(LinUsersCollector.name, User.element_name)
+				except AlreadyExistsException as e:
+					# we are reading the second run_id and the first one had values to add where the send had none. Just discard the error, it is controlled.
+					pass
+
+			# search for groups linked to that report
+			query = f"""SELECT gid, status FROM reports_groups WHERE report_id=? AND run_id=?"""
+			request = db_cursor.execute(query, (report_id, run_id))
+			groups = request.fetchall()
+
+			if groups and groups != []:
+				for gid, status in groups:
+					query = f"""SELECT name FROM groups WHERE run_id=? AND gid=?"""
+					request = db_cursor.execute(query, (run_id, int(gid)))
+					names = request.fetchall()
+					for gname, *_ in names:
+						gid = int(gid)
+
+						group = Group(gid, gname)
+						
+						# add the recovered group to the report
+						report.add_diff_element(DiffElement(run_id, group, Group.element_name), LinUsersCollector.name)
+
+			else:
+				try:
+					report.add_no_diff_element(LinUsersCollector.name, Group.element_name)
+				except AlreadyExistsException:
+					# we are reading the second run_id and the first one had values to add where the send had none. Just discard the error, it is controlled.
+					pass
+
+			# search for sudoers linked to that report
+			query = f"""SELECT uid, status FROM reports_sudoers WHERE report_id=? AND run_id=?"""
+			request = db_cursor.execute(query, (report_id, run_id))
+			sudoers = request.fetchall()
+
+			if sudoers and sudoers != []:
+				for uid, status in sudoers:
+					uid = int(uid) # no need to do another query since we already have the uid of the sudoer
+
+					sudoer = Sudoer(uid)
+					
+					# add the recovered sudoer to the report
+					report.add_diff_element(DiffElement(run_id, sudoer, Sudoer.element_name), LinUsersCollector.name)
+
+			else:
+				try:
+					report.add_no_diff_element(LinUsersCollector.name, Sudoer.element_name)
+				except AlreadyExistsException:
+					# we are reading the second run_id and the first one had values to add where the send had none. Just discard the error, it is controlled.
+					pass
+		
+
 	def get_report_tree_structure():
 		"""
 		Get the structure of the Collector used for the report.
@@ -890,3 +1016,36 @@ class LinUsersCollector(ACollector):
 			A python dict with an empty list of users, an empty list of groups, and an empty list of sudoers.
 		"""
 		return {User.element_name : [], Group.element_name : [], Sudoer.element_name : []}
+
+	def create_report_tables(db_cursor):
+		"""
+		Static method used to create the different tables used by this collector for report structure in the specified database.
+		Note: modifications are not committed here.
+
+		Arguments:
+			db_cursor (Cursor): sqlite3 cursor pointing to the database in which the tables must be created.
+		"""
+		db_cursor.execute("""CREATE TABLE IF NOT EXISTS reports_users(
+			report_id TEXT,
+			run_id TEXT,
+			uid INTEGER,
+			status INTEGER,
+			PRIMARY KEY(report_id, run_id, uid),
+			FOREIGN KEY(run_id, uid) REFERENCES users
+			)""")
+		db_cursor.execute("""CREATE TABLE IF NOT EXISTS reports_groups(
+			report_id TEXT,
+			run_id TEXT,
+			gid INTEGER,
+			status INTEGER,
+			PRIMARY KEY(report_id, run_id, gid),
+			FOREIGN KEY(run_id, gid) REFERENCES groups
+			)""")
+		db_cursor.execute("""CREATE TABLE IF NOT EXISTS reports_sudoers(
+			report_id TEXT,
+			run_id TEXT,
+			uid INTEGER,
+			status INTEGER,
+			PRIMARY KEY(report_id, run_id, uid),
+			FOREIGN KEY(run_id, uid) REFERENCES sudoers
+			)""")

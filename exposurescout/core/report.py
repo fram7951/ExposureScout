@@ -173,6 +173,16 @@ class DiffElement:
 
 		return (obj, rest)
 
+	def export_db(self, report_id, db_cursor):
+		"""
+		Insert the element into the database.
+
+		Arguments:
+			report_id (str): identifier of the report the element is linked to.
+			db_cursor (Cursor): cursor pointing to the sqlite3 database.
+		"""
+		self.element.export_report_db(report_id, self.run_id, self.type, db_cursor)
+
 class DiffReport:
 	"""
 	Report of the differences between two snapshots.
@@ -346,3 +356,50 @@ class DiffReport:
 
 		return collector.import_diff_from_report(data[1:], run_ids, self)
 
+	def export_db(self, report_id, db):
+		"""
+		Export the report in the specified database.
+
+		Arguments:
+			report_id (str): identifer of the report.
+			db (str): path to the database.
+		"""
+		from ..modules import AVAILABLE_COLLECTORS as AC
+		import sqlite3 as sql
+
+		conn = sql.connect(db)
+		cursor = conn.cursor()
+
+		# creates the tables if they do not already exist
+		cursor.execute("""CREATE TABLE IF NOT EXISTS reports(
+			report_id TEXT PRIMARY KEY,
+			run_id_a TEXT,
+			run_id_b TEXT
+			)""")
+		cursor.execute("""CREATE TABLE IF NOT EXISTS reports_collectors(
+			report_id TEXT,
+			collector_type BLOB,
+			PRIMARY KEY(report_id, collector_type)
+			)""") # collector type is prefered as "collector_type" value compared to collector name because encoding is lighter with a BLOB of bytes than with a TEXT value
+
+		# Insert the data
+		query = f"""INSERT INTO reports VALUES (?, ?, ?)"""
+		cursor.execute(query, (report_id, self.first_run_id, self.second_run_id))
+
+		# Insert data for every collector data that is in the report
+		for collector_name in self.diff_elemnts.keys():
+			collector_class = AC.get_collector_by_name(collector_name)
+
+			# list the collectors beeing compared in the report
+			query = f"""INSERT INTO reports_collectors VALUES (?, ?)"""
+			cursor.execute(query, (report_id, collector_class.snapshot_elemnt_id))
+
+			# create the database report related tables for every collector type beeing used in the report
+			collector_class.create_report_tables(cursor)
+
+			# insert the data of every element of every collectible types of each collector that is in the report
+			for collectible_data in self.diff_elemnts[collector_name].values():
+				for element in collectible_data:
+					element.export_db(report_id, cursor)
+
+		conn.commit()

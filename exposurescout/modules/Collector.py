@@ -53,6 +53,18 @@ class ACollectible:
 		"""
 		raise AbstractMethodException("You should not use the abstracted class method in your module for from_bytes. Please implement it properly.")
 
+	def export_report_db(self, report_id, run_id, status, db_cursor):
+		"""
+		Export a collectible data structure that is part of a diff report into the specified database.
+
+		Arguments:
+			report_id (str): identifer of the report the element is linked to.
+			run_id (str): identifier of the snapshot run the element comes from.
+			status (int): value of the element's status in the diff report (created, deleted, modified, ...).
+			db_cursor (Cursor): sqlite3 cursor that points to the database.
+		"""
+		raise AbstractMethodException("You should not use the abstracted class method in your module for from_bytes. Please implement it properly.")
+
 class ACollector:
 	"""
 	Abstract class from which every analysis/collector module should derive.
@@ -155,12 +167,13 @@ class ACollector:
 		"""
 		raise AbstractMethodException("You should not use the abstracted class method in your module for import_bin. Please implement it properly.")
 
-	def import_db(self, db, run_id):
+	def import_db(self, db_cursor, run_id):
 		"""
 		Import method to recover data of a previous run stored in DB. Those data can then be previewed.
+		Note: must already been connected to the database.
 
 		Arguments:
-			db (str): path to the db file.
+			db_cursor (Cursor): pointer to the database.
 			run_id (str): id used to store the collected data in the db of a specific run.
 		"""
 		raise AbstractMethodException("You should not use the abstracted class method in your module for import_db. Please implement it properly.")
@@ -206,7 +219,7 @@ class ACollector:
 
 	def import_diff_from_report(data, run_ids, report):
 		"""
-		Static method used to import the values of report that are related to a given collector. MUST be rewritten for every new module since every module/collecor works differently.
+		Static method used to import the values of report that are related to a given collector from a bin file. MUST be rewritten for every new module since every module/collecor works differently.
 
 		Arguments:
 			data (bytes): a bytes stream representing the elements associated to this collector in the report.
@@ -215,8 +228,29 @@ class ACollector:
 		"""
 		raise AbstractMethodException("You should not use the abstracted class method in your module for import_diff_from_report. Please implement it properly.")
 
+	def import_diff_from_report_db(db_cursor, run_ids, report):
+		"""
+		Static method used to import the values of report that are related to a given collector from a database. MUST be rewritten for every new module since every module/collecor works differently.
+
+		Arguments:
+			db_cursor (Cursor): pointer to the database.
+			run_ids (list[str]): the ordered list of the snapshot ids from which come the report elements.
+			report (DiffReport): datastructure in which to store the recovered data.
+		"""
+		raise AbstractMethodException("You should not use the abstracted class method in your module for import_diff_from_report_db. Please implement it properly.")
+
 	def get_report_tree_structure():
 		"""
 		Get the structure of the Collector used for the report. MUST be rewritten for every new module since every module/collecor works differently.
 		"""
 		raise AbstractMethodException("You should not use the abstracted class method in your module for get_report_tree_structure. Please implement it properly.")
+
+	def create_report_tables(db_cursor):
+		"""
+		Static method used to create the different tables used by this collector for report structure in the specified database.
+		Note: modifications are not committed here. MUST be rewritten for every new module since every module/collecor works differently.
+
+		Arguments:
+			db_cursor (Cursor): sqlite3 cursor pointing to the database in which the tables must be created.
+		"""
+		raise AbstractMethodException("You should not use the abstracted class method in your module for create_report_tables. Please implement it properly.")

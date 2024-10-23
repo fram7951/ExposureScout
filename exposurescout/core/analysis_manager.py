@@ -122,7 +122,8 @@ class AnalysisManager:
 
 		elif method == DB:
 			if db:
-				pass
+				for collector in self.runs[run_id]:
+					collector.export_db(db, run_id)
 			else:
 				raise ValueError(f"No database path was set. Please provide a proper path.")
 
@@ -228,7 +229,27 @@ class AnalysisManager:
 
 		elif method == DB:
 			if db:
-				pass
+				import sqlite3 as sql
+
+				conn = sql.connect(db)
+				cursor = conn.cursor()
+
+				query = f"""SELECT collector_type FROM snapshots WHERE run_id=?"""
+				request = cursor.execute(query, (run_id,))
+
+				result = request.fetchall()
+
+				if not result or result == []:
+					return False
+
+				for collector_type, *_ in result:
+					collector_class = modules.AVAILABLE_COLLECTORS.get_collector_by_type(collector_type)
+					collector = collector_class()
+					collector.import_db(cursor, run_id)
+					collectors.append(collector)
+
+				conn.close()
+
 			else:
 				raise ValueError(f"No database path was set. Please provide a proper path.")
 
@@ -386,7 +407,7 @@ class AnalysisManager:
 			ValueError: unknown method provided.
 			ValueError: method is set to 1 (DB) but no path to the database provided.
 		"""
-		filename = fn = os.path.join(os.path.dirname(__file__), f"../../reports/{report_id}.rpt")
+		filename = os.path.join(os.path.dirname(__file__), f"../../reports/{report_id}.rpt")
 
 		if method == BIN:
 			header, report = self.diff_reports[report_id].to_bytes()
@@ -397,7 +418,8 @@ class AnalysisManager:
 
 		elif method == DB:
 			if db:
-				pass
+				self.diff_reports[report_id].export_db(report_id, db)
+
 			else:
 				raise ValueError(f"No database path was set. Please provide a proper path.")
 
@@ -524,14 +546,35 @@ class AnalysisManager:
 
 		elif method == DB:
 			if db:
+				import sqlite3 as sql
+
 				conn = sql.connect(db)
 				cursor = conn.cursor()
 
-				###################################################
-				##	  %% TODO: Check if report_id is in db %%	 ##
-				###################################################
+				query = f"""SELECT run_id_a, run_id_b FROM reports WHERE report_id=?"""
+				request = cursor.execute(query, (report_id,))
 
-				
+				result = request.fetchone()
+
+				if not result or result == () :
+					return False
+
+				run_id_a, run_id_b = result
+				diff_report = DiffReport(run_id_a, run_id_b)
+
+				# For every collector that were compared in te report, import the data
+				query = f"""SELECT collector_type FROM reports_collectors WHERE report_id=?"""
+				request = cursor.execute(query, (report_id,))
+
+				collectors_type = request.fetchall()
+
+				# for every collector, recover its class and import report data relative to the collectibles it collected
+				for collector_type, *_ in collectors_type:
+					collector_class = modules.AVAILABLE_COLLECTORS.get_collector_by_type(collector_type)
+
+					collector_class.import_diff_from_report_db(cursor, report_id, [run_id_a, run_id_b], diff_report)
+
+				conn.close()
 
 			else:
 				raise ValueError(f"No database path was set. Please provide a proper path.")
