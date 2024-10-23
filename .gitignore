@@ -19,3 +19,6 @@ site/
 *.test_rpt
 *.rpt
 *.db
+
+# special files
+_*
