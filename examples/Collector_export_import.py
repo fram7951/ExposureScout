@@ -13,6 +13,7 @@ Version:
 import time
 from datetime import datetime
 import os
+import sqlite3 as sql
 
 from exposurescout.modules import LinUsersCollector
 from exposurescout.core import VarInt
@@ -82,7 +83,10 @@ def main():
 
 	# recover the same content from the database
 	uc2 = LinUsersCollector()
-	uc2.import_db(reports_dir + "test.db", run_id)
+	conn = sql.connect(reports_dir + "test.db")
+	cursor = conn.cursor()
+	uc2.import_db(cursor, run_id)
+	conn.close()
 
 	print("is it the same when importing?", uc == uc2)
 
