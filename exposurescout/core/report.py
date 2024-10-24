@@ -96,12 +96,12 @@ class DiffElement:
 	Arguments:
 		run_id (str): identifier of the snapshot the element is associated to.
 		element (Object): the objects used by a collector to store what they collect. (e.g. User in UsersCollector to store users)
-		type (str): type of the element. (e.g. User in UsersCollector has the "user" type)
+		type (int): type of modification that happened on the element. (Created, Deleted, Modified)
 
 	Attributes:
 		run_id (str): identifier of the snapshot the element is associated to.
 		element (Object): the objects used by a collector to store what they collect. (e.g. User in UsersCollector to store users)
-		type (str): type of the element. (e.g. User in UsersCollector has the "user" type)
+		type (int): type of modification that happened on the element. (Created, Deleted, Modified)
 	"""
 	def __init__(self, run_id, element, type):
 		self.run_id = run_id
@@ -150,6 +150,7 @@ class DiffElement:
 		encoded_data += run_id_bytes[self.run_id]
 		encoded_data += self.element.to_bytes()
 		#encode the type of DiffElement
+		encoded_data += VarInt.to_bytes(self.type)
 
 		return encoded_data
 
@@ -169,7 +170,13 @@ class DiffElement:
 
 		element, rest = element_class.from_bytes(data[1:])
 
-		obj = DiffElement(run_ids[run_id], element, element.element_name)
+		type_len = VarInt.get_len(rest)
+		type_val = VarInt.from_bytes(rest[0:type_len])
+		rest = rest[type_len:]
+		if rest == b'':
+			rest = None
+
+		obj = DiffElement(run_ids[run_id], element, type_val)
 
 		return (obj, rest)
 
@@ -240,7 +247,7 @@ class DiffReport:
 			raise UnknownValueException(f"Element is not from any of the snapshots used for this report. (received {element.run_id}, expected {self.first_run_id} or {self.second_run_id})")
 
 		if collector_name in self.diff_elemnts.keys():
-			if element.type in self.diff_elemnts[collector_name].keys():
+			if element.get_collectible_name() in self.diff_elemnts[collector_name].keys():
 				self.diff_elemnts[collector_name][element.get_collectible_name()].append(element)
 			else:
 				self.diff_elemnts[collector_name][element.get_collectible_name()] = [element]

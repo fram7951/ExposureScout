@@ -16,7 +16,7 @@ Version:
 from .Collector import ACollector, ACollectible
 from ..core.tools import get_file_hash, xor_list
 from ..core.octets import VarInt
-from ..core.report import DiffElement, AlreadyExistsException
+from ..core.report import DiffElement, AlreadyExistsException, CREATED, DELETED, MODIFIED
 
 import subprocess
 import threading
@@ -778,10 +778,10 @@ class LinUsersCollector(ACollector):
 			report (DiffReport): the report where to add the differences.
 		"""
 		# create local macro for adding elements in the report
-		def _add_in_report(run_id, elements, type):
+		def _add_in_report(run_id, elements, element_type, type):
 			if len(elements) > 0:
 				for e in elements:
-					elemnt = DiffElement(run_id, e, type)
+					elemnt = DiffElement(run_id, e, element_type)
 					report.add_diff_element(elemnt, LinUsersCollector.name)
 			else:
 				try:
@@ -804,16 +804,16 @@ class LinUsersCollector(ACollector):
 			users_b = b.get_users()
 
 			# We add them in the report as a report element
-			_add_in_report(run_id_b, users_b, User.element_name)
+			_add_in_report(run_id_b, users_b, CREATED, User.element_name)
 
 			# We do the same with groups
 			groups_b = b.get_groups()
 
-			_add_in_report(run_id_b, groups_b, Group.element_name)
+			_add_in_report(run_id_b, groups_b, CREATED, Group.element_name)
 
 			# We do the same with sudoers
 			sudoers_b = b.get_sudoers()
-			_add_in_report(run_id_b, sudoers_b, Sudoer.element_name)
+			_add_in_report(run_id_b, sudoers_b, CREATED, Sudoer.element_name)
 
 		elif not b:
 			# there is the first collector but not the second one
@@ -825,16 +825,16 @@ class LinUsersCollector(ACollector):
 			users_a = a.get_users()
 
 			# We add them in the report as a report element
-			_add_in_report(run_id_a, users_a, User.element_name)
+			_add_in_report(run_id_a, users_a, CREATED, User.element_name)
 
 			# We do the same with groups
 			groups_a = a.get_groups()
 
-			_add_in_report(run_id_a, groups_a, Group.element_name)
+			_add_in_report(run_id_a, groups_a, CREATED, Group.element_name)
 
 			# We do the same with sudoers
 			sudoers_a = a.get_sudoers()
-			_add_in_report(run_id_a, sudoers_a, Sudoer.element_name)
+			_add_in_report(run_id_a, sudoers_a, CREATED, Sudoer.element_name)
 
 		else:
 			# there are two collectors
@@ -850,24 +850,124 @@ class LinUsersCollector(ACollector):
 
 			unique_users_a, unique_users_b = xor_list(users_a, users_b)
 			# We add them in the report as a report element
-			_add_in_report(run_id_a, unique_users_a, User.element_name)
-			_add_in_report(run_id_b, unique_users_b, User.element_name)
+			modified = False
+			for element_a in unique_users_a:
+				for element_b in unique_users_b:
+					if element_a.uid == element_b.uid:
+						elemnt = DiffElement(run_id_a, element_a, MODIFIED)
+						report.add_diff_element(elemnt, LinUsersCollector.name)
+						elemnt = DiffElement(run_id_b, element_b, MODIFIED)
+						report.add_diff_element(elemnt, LinUsersCollector.name)
+
+						unique_users_a.remove(element_a)
+						unique_users_b.remove(element_b)
+
+						modified = True
+
+						break
+
+			if len(unique_users_a) > 0:
+				for element_a in unique_users_a:
+					element = DiffElement(run_id_a, element_a, DELETED)
+					report.add_diff_element(element, LinUsersCollector.name)
+					modified = True
+
+			if len(unique_users_b) > 0:
+				for element_b in unique_users_b:
+					element = DiffElement(run_id_b, element_b, CREATED)
+					report.add_diff_element(element, LinUsersCollector.name)
+					modified = True
+
+			if not modified:
+				try:
+					report.add_no_diff_element(LinUsersCollector.name, User.element_name)
+				except AlreadyExistsException:
+					pass
+
 
 			# We do the same with groups
 			groups_a = a.get_groups()
 			groups_b = b.get_groups()
 
 			unique_groups_a, unique_groups_b = xor_list(groups_a, groups_b)
-			_add_in_report(run_id_a, unique_groups_a, Group.element_name)
-			_add_in_report(run_id_b, unique_groups_b, Group.element_name)
+			#print("unique groups a:", unique_groups_a)
+			#print("unique groups b:", unique_groups_b)
+			modified = False
+			for element_a in unique_groups_a:
+				for element_b in unique_groups_b:
+					if element_a.gid == element_b.gid:
+						elemnt = DiffElement(run_id_a, element_a, MODIFIED)
+						report.add_diff_element(elemnt, LinUsersCollector.name)
+						elemnt = DiffElement(run_id_b, element_b, MODIFIED)
+						report.add_diff_element(elemnt, LinUsersCollector.name)
+
+						unique_groups_a.remove(element_a)
+						unique_groups_b.remove(element_b)
+
+						modified = True
+
+						break
+
+			if len(unique_groups_a) > 0:
+				for element_a in unique_groups_a:
+					element = DiffElement(run_id_a, element_a, DELETED)
+					report.add_diff_element(element, LinUsersCollector.name)
+					modified = True
+
+			if len(unique_groups_b) > 0:
+				for element_b in unique_groups_b:
+					element = DiffElement(run_id_b, element_b, CREATED)
+					report.add_diff_element(element, LinUsersCollector.name)
+					modified = True
+
+			if not modified:
+				try:
+					report.add_no_diff_element(LinUsersCollector.name, Group.element_name)
+				except AlreadyExistsException:
+					pass
+					
 
 			# We do the same with sudoers
 			sudoers_a = a.get_sudoers()
 			sudoers_b = b.get_sudoers()
 
 			unique_sudoers_a, unique_sudoers_b = xor_list(sudoers_a, sudoers_b)
-			_add_in_report(run_id_a, unique_sudoers_a, Sudoer.element_name)
-			_add_in_report(run_id_b, unique_sudoers_b, Sudoer.element_name)
+			#print("unique sudoers a:", unique_sudoers_a)
+			#print("unique sudoers b:", unique_sudoers_b)
+			modified = False
+			for element_a in unique_sudoers_a:
+				for element_b in unique_sudoers_b:
+					if element_a.uid == element_b.uid:
+						elemnt = DiffElement(run_id_a, element_a, MODIFIED)
+						report.add_diff_element(elemnt, LinUsersCollector.name)
+						elemnt = DiffElement(run_id_b, element_b, MODIFIED)
+						report.add_diff_element(elemnt, LinUsersCollector.name)
+
+						unique_sudoers_a.remove(element_a)
+						unique_sudoers_b.remove(element_b)
+
+						modified = True
+
+						break
+
+			if len(unique_sudoers_a) > 0:
+				for element_a in unique_sudoers_a:
+					element = DiffElement(run_id_a, element_a, DELETED)
+					report.add_diff_element(element, LinUsersCollector.name)
+					modified = True
+
+			if len(unique_sudoers_b) > 0:
+				for element_b in unique_sudoers_b:
+					element = DiffElement(run_id_b, element_b, CREATED)
+					report.add_diff_element(element, LinUsersCollector.name)
+					modified = True
+
+			if not modified:
+				try:
+					report.add_no_diff_element(LinUsersCollector.name, Sudoer.element_name)
+				except AlreadyExistsException:
+					pass
+					
 
 	def import_diff_from_report(data, run_ids, report):
 		"""
@@ -952,7 +1052,7 @@ class LinUsersCollector(ACollector):
 
 						user = User(uid, uname, groups)
 						
-						report.add_diff_element(DiffElement(run_id, user, User.element_name), LinUsersCollector.name)
+						report.add_diff_element(DiffElement(run_id, user, status), LinUsersCollector.name)
 
 			else:
 				try:
@@ -977,7 +1077,7 @@ class LinUsersCollector(ACollector):
 						group = Group(gid, gname)
 						
 						# add the recovered group to the report
-						report.add_diff_element(DiffElement(run_id, group, Group.element_name), LinUsersCollector.name)
+						report.add_diff_element(DiffElement(run_id, group, status), LinUsersCollector.name)
 
 			else:
 				try:
@@ -998,7 +1098,7 @@ class LinUsersCollector(ACollector):
 					sudoer = Sudoer(uid)
 					
 					# add the recovered sudoer to the report
-					report.add_diff_element(DiffElement(run_id, sudoer, Sudoer.element_name), LinUsersCollector.name)
+					report.add_diff_element(DiffElement(run_id, sudoer, status), LinUsersCollector.name)
 
 			else:
 				try:

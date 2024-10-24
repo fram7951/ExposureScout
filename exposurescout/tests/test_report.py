@@ -12,7 +12,7 @@ Version:
 """
 
 from ..modules import LinUsersCollector, User, Group, Sudoer
-from ..core.report import DiffElement, DiffReport
+from ..core.report import DiffElement, DiffReport, CREATED, DELETED, MODIFIED
 from ..core import tools
 from ..core.octets import VarInt
 import unittest
@@ -53,11 +53,11 @@ class TestDiffElement(unittest.TestCase):
 		"""
 		run_id = "test"
 		user = User(1001, "test", [1001])
-		element = DiffElement(run_id, user, user.element_name)
+		element = DiffElement(run_id, user, CREATED)
 
 		result = element.to_bytes({run_id:b"\x00"})
 
-		expected = b"\x00\x23\xe9\x04test\x01\x23\xe9"
+		expected = b"\x00\x23\xe9\x04test\x01\x23\xe9\x00"
 
 		self.assertEqual(result, expected)
 
@@ -67,9 +67,9 @@ class TestDiffElement(unittest.TestCase):
 		"""
 		run_id = "test"
 		user = User(1001, "test", [1001])
-		expected = DiffElement(run_id, user, user.element_name)
+		expected = DiffElement(run_id, user, CREATED)
 
-		data = b"\x00\x23\xe9\x04test\x01\x23\xe9"
+		data = b"\x00\x23\xe9\x04test\x01\x23\xe9\x00"
 
 		result, rest = DiffElement.from_bytes(data, [run_id], User)
 
@@ -118,8 +118,8 @@ class TestDiffReport(unittest.TestCase):
 		sudoers = [Sudoer(1000)]
 		md5 = tools.get_file_hash("./exposurescout/tests/hash_test_file.txt")
 
-		uc_a.raw_result = [users, groups, sudoers, md5, md5]
-		uc_b.raw_result = [users, groups, sudoers, md5, md5]
+		uc_a.raw_result = [users.copy(), groups.copy(), sudoers.copy(), md5, md5]
+		uc_b.raw_result = [users.copy(), groups.copy(), sudoers.copy(), md5, md5]
 
 		result = DiffReport(run_id_a, run_id_b)
 
@@ -144,18 +144,54 @@ class TestDiffReport(unittest.TestCase):
 		expected.diff_elemnts = {
 			LinUsersCollector.name : {
 				User.element_name:[
-					DiffElement(run_id_b, new_user, User.element_name),
+					DiffElement(run_id_b, new_user, CREATED),
 				],
 				Group.element_name: [
-					DiffElement(run_id_b, new_group, Group.element_name),
+					DiffElement(run_id_b, new_group, CREATED),
 				],
 				Sudoer.element_name: [
-					DiffElement(run_id_b, new_sudoer, Sudoer.element_name),
+					DiffElement(run_id_b, new_sudoer, CREATED),
 				]
 			}
 		}
 
-		self.assertNotEqual(result, expected)
+		self.assertEqual(result, expected)
+
+
+		result = DiffReport(run_id_a, run_id_b)
+
+		uc_a.raw_result = [[User(1000, "user", [1000,24,25,27,29])], groups.copy(), sudoers.copy(), md5, md5]
+		uc_b.raw_result = [[User(1000, "user", [1000,24,25,27,29])], groups.copy(), sudoers.copy(), md5, md5]
+
+		new_user = User(1001, "test", [1001])
+		new_group = Group(1001, "test")
+		new_sudoer = Sudoer(1001)
+
+		uc_a.raw_result[0].append(new_user)
+		uc_a.raw_result[1].append(new_group)
+		uc_a.raw_result[2].append(new_sudoer)
+		uc_b.raw_result[0][0].groups.append(1001)
+
+		LinUsersCollector.make_diff(run_id_a, run_id_b, uc_a, uc_b, result)
+
+		expected = DiffReport(run_id_a, run_id_b)
+		expected.diff_elemnts = {
+			LinUsersCollector.name : {
+				User.element_name:[
+					DiffElement(run_id_a, users[0], MODIFIED),
+					DiffElement(run_id_b, uc_b.raw_result[0][0], MODIFIED),
+					DiffElement(run_id_a, new_user, DELETED),
+				],
+				Group.element_name: [
+					DiffElement(run_id_a, new_group, DELETED),
+				],
+				Sudoer.element_name: [
+					DiffElement(run_id_a, new_sudoer, DELETED),
+				]
+			}
+		}
+
+		self.assertEqual(result, expected)
 
 	def test_to_bytes(self):
 		"""
@@ -174,18 +210,18 @@ class TestDiffReport(unittest.TestCase):
 		diff_report.diff_elemnts = {
 			collector : {
 				User.element_name:[
-					DiffElement(run_id_b, user, User.element_name),
+					DiffElement(run_id_b, user, CREATED),
 				],
 				Group.element_name: [
-					DiffElement(run_id_b, group, Group.element_name),
+					DiffElement(run_id_b, group, CREATED),
 				],
 				Sudoer.element_name: [
-					DiffElement(run_id_b, sudoer, Sudoer.element_name),
+					DiffElement(run_id_b, sudoer, CREATED),
 				]
 			}
 		}
 
-		expected = b"\x11\x06test_a\x06test_b\x01\x00\x00\x00\x01\x01\x23\xe9\x04test\x01\x23\xe9\x01\x01\x23\xe9\x04test\x01\x01\x23\xe9"
+		expected = b"\x11\x06test_a\x06test_b\x01\x00\x00\x00\x01\x01\x23\xe9\x04test\x01\x23\xe9\x00\x01\x01\x23\xe9\x04test\x00\x01\x01\x23\xe9\x00"
 
 		header, report = diff_report.to_bytes()
 		result = VarInt.to_bytes(len(header)) + header + report
@@ -234,18 +270,18 @@ class TestDiffReport(unittest.TestCase):
 		expected.diff_elemnts = {
 			collector : {
 				User.element_name:[
-					DiffElement(run_id_b, user, User.element_name),
+					DiffElement(run_id_b, user, CREATED),
 				],
 				Group.element_name: [
-					DiffElement(run_id_b, group, Group.element_name),
+					DiffElement(run_id_b, group, CREATED),
 				],
 				Sudoer.element_name: [
-					DiffElement(run_id_b, sudoer, Sudoer.element_name),
+					DiffElement(run_id_b, sudoer, CREATED),
 				]
 			}
 		}
 
-		data = b"\x00\x01\x01\x23\xe9\x04test\x01\x23\xe9\x01\x01\x23\xe9\x04test\x01\x01\x23\xe9"
+		data = b"\x00\x01\x01\x23\xe9\x04test\x01\x23\xe9\x00\x01\x01\x23\xe9\x04test\x00\x01\x01\x23\xe9\x00"
 
 		result = DiffReport(run_id_a, run_id_b)
 		result.read_collector_from_bytes(data,[run_id_a, run_id_b], LinUsersCollector)
@@ -269,18 +305,18 @@ class TestDiffReport(unittest.TestCase):
 		expected.diff_elemnts = {
 			collector : {
 				User.element_name:[
-					DiffElement(run_id_b, user, User.element_name),
+					DiffElement(run_id_b, user, CREATED),
 				],
 				Group.element_name: [
-					DiffElement(run_id_b, group, Group.element_name),
+					DiffElement(run_id_b, group, CREATED),
 				],
 				Sudoer.element_name: [
-					DiffElement(run_id_b, sudoer, Sudoer.element_name),
+					DiffElement(run_id_b, sudoer, CREATED),
 				]
 			}
 		}
 
-		data = b"\x01\x01\x01\x23\xe9\x04test\x01\x23\xe9\x01\x01\x23\xe9\x04test\x01\x01\x23\xe9"
+		data = b"\x01\x01\x01\x23\xe9\x04test\x01\x23\xe9\x00\x01\x01\x23\xe9\x04test\x00\x01\x01\x23\xe9\x00"
 
 		diff_report = DiffReport(run_id_a, run_id_b)
 		result = lambda : diff_report.read_collector_from_bytes(data,[run_id_a, run_id_b], LinUsersCollector)
