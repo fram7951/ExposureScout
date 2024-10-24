@@ -37,6 +37,7 @@ You can extend or modify it but keep in mind that any modification in those file
 	        - [get_collectible_name](#get_collectible_name)
 	        - [to_bytes](#to_bytesrun_id_bytes)
 	        - [from_bytes](#from_bytesrun_ids-element_class)
+	        - [export_db](#export_dbreport_id-db_cursor)
 
 	    - [DiffReport](#diffreportfirst_run_id-second_run_id)
 	        - [get_collectors_names](#get_collectors_names)
@@ -45,6 +46,7 @@ You can extend or modify it but keep in mind that any modification in those file
 	        - [add_no_diff_collector](#add_no_diff_collectorcollector_name)
 	        - [to_bytes](#to_bytes)
 	        - [read_collector_from_bytes](#read_collector_from_bytesdata-run_ids-collector)
+	        - [export_db](#export_dbreport_id-db)
 	---------------------------------------------------
 	- [tools](#tools)
 	    - [xor_list](#xor_lista-b)
@@ -271,6 +273,13 @@ It can either be a new element or an element that has changed between two snapsh
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1. a bytes stream represdenting the element;\
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2. the rest of the unread bytes that are not part of this DiffElement datastructure.
 
+#### export_db(_**report_id, db_cursor**_)
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Insert the element into the database.
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*Arguments*:\
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_report_id_ (str): identifier of the report the element is linked to.\
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_db_cursor_ ([Cursor](doc.python.org/3/library/sqlite3.html#sqlite3.Cursor)): cursor pointing to the sqlite3 database.
+
 ### DiffReport(_**first_run_id, second_run_id**_)
 Report of the differences between two snapshots.
 
@@ -340,6 +349,13 @@ Report of the differences between two snapshots.
 
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*Raises*:\
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_ValueError_: collectors do not match
+
+#### export_db(_**report_id, db**_):
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Export the report in the specified database.
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*Arguments*:\
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_report_id_ (str): identifer of the report.\
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_db_ (str): path to the database.
 
 ---------------------------------------------------
 ## tools
