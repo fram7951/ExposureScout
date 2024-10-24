@@ -1,4 +1,5 @@
 # core
+# I'm able to modify that file
 This is where the core functionalities of the application are implemented.
 
 You can extend or modify it but keep in mind that any modification in those files may corrupt the application if not handled carefully.
